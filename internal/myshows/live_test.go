@@ -80,5 +80,26 @@ func TestLive_Account(t *testing.T) {
 		}
 
 		t.Logf("first tracked show: %d %q (status %q)", first.Show.ID, first.Show.Title, first.WatchStatus)
+
+		// Pin the real profile.ShowStatuses wire shape (like the nested-show pin
+		// above), since unit tests only mock it.
+		statuses, statusErr := client.ShowStatuses(t.Context(), []int{first.Show.ID})
+		if statusErr != nil {
+			t.Fatalf("ShowStatuses: %v", statusErr)
+		}
+
+		if len(statuses) == 0 || statuses[0].ShowID != first.Show.ID || statuses[0].WatchStatus == "" {
+			t.Errorf("ShowStatuses did not return a status for %d: %+v", first.Show.ID, statuses)
+		}
+	}
+
+	// Pin the documented watch-status vocabulary against the real API: the
+	// my_shows status filter and the README/tool docs claim exactly these four.
+	known := map[string]bool{"watching": true, "later": true, "cancelled": true, "finished": true}
+	for i := range shows {
+		got := shows[i].WatchStatus
+		if got != "" && !known[got] {
+			t.Errorf("unexpected watchStatus %q; docs claim only watching/later/cancelled/finished", got)
+		}
 	}
 }

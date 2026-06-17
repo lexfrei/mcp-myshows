@@ -289,6 +289,79 @@ func TestCheckEpisode_RatingBody(t *testing.T) {
 	}
 }
 
+func TestShowDetails_ImdbIDStringOrNumber(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "string", raw: `{"imdbId":"tt0903747"}`, want: "tt0903747"},
+		{name: "number", raw: `{"imdbId":475784}`, want: "475784"},
+		{name: "null", raw: `{"imdbId":null}`, want: ""},
+		{name: "absent", raw: `{}`, want: ""},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			var details myshows.ShowDetails
+
+			err := json.Unmarshal([]byte(testCase.raw), &details)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			if got := string(details.ImdbID); got != testCase.want {
+				t.Errorf("ImdbID = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestShowDetails_ImdbIDRejectsNonScalar(t *testing.T) {
+	for _, raw := range []string{`{"imdbId":true}`, `{"imdbId":[1,2]}`, `{"imdbId":{"x":1}}`} {
+		var details myshows.ShowDetails
+
+		err := json.Unmarshal([]byte(raw), &details)
+		if err == nil {
+			t.Errorf("%s: expected an unmarshal error, got none (ImdbID=%q)", raw, details.ImdbID)
+		}
+	}
+}
+
+func TestShowStatuses(t *testing.T) {
+	var requested map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		var envelope struct {
+			Params map[string]any `json:"params"`
+		}
+
+		_ = json.NewDecoder(req.Body).Decode(&envelope)
+		requested = envelope.Params
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = rw.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"showId":45534,"watchStatus":"later"},{"showId":187,"watchStatus":"finished"}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := myshows.New(&myshows.Options{APIURL: server.URL, Token: "tok"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	statuses, err := client.ShowStatuses(t.Context(), []int{45534, 187})
+	if err != nil {
+		t.Fatalf("ShowStatuses: %v", err)
+	}
+
+	if len(statuses) != 2 || statuses[0].ShowID != 45534 || statuses[0].WatchStatus != "later" {
+		t.Fatalf("unexpected statuses: %+v", statuses)
+	}
+
+	if _, ok := requested["showIds"]; !ok {
+		t.Errorf("request missing showIds param: %v", requested)
+	}
+}
+
 func TestSearch_ForwardsConfiguredToken(t *testing.T) {
 	handler := &rpcHandler{result: `[]`}
 	server := newServer(t, handler)

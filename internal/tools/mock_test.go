@@ -28,6 +28,12 @@ type mockAPI struct {
 	lastMode  string
 	lastLogin string
 
+	myShowsResult  []myshows.ProfileShow
+	myShowsErr     error
+	statusesResult []myshows.ShowStatus
+	statusesErr    error
+	lastShowIDs    []int
+
 	checkID     int
 	checkRating int
 	checkErr    error
@@ -74,7 +80,13 @@ func (m *mockAPI) Profile(_ context.Context, _ string) (*myshows.Profile, error)
 func (m *mockAPI) MyShows(_ context.Context, login string) ([]myshows.ProfileShow, error) {
 	m.lastLogin = login
 
-	return nil, nil
+	return m.myShowsResult, m.myShowsErr
+}
+
+func (m *mockAPI) ShowStatuses(_ context.Context, showIDs []int) ([]myshows.ShowStatus, error) {
+	m.lastShowIDs = showIDs
+
+	return m.statusesResult, m.statusesErr
 }
 
 func (m *mockAPI) MyEpisodes(_ context.Context, _ int) ([]myshows.WatchedEpisode, error) {

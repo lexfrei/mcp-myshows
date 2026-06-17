@@ -95,7 +95,7 @@ func TestRegisterTools_WithAuth(t *testing.T) {
 	want := []string{
 		"myshows_server_version", "myshows_search", "myshows_show", "myshows_show_by_external",
 		"myshows_episode", "myshows_top", "myshows_genres",
-		"myshows_profile", "myshows_my_shows", "myshows_my_episodes", "myshows_unwatched",
+		"myshows_profile", "myshows_my_shows", "myshows_show_status", "myshows_my_episodes", "myshows_unwatched",
 		"myshows_counters", "myshows_recommendations",
 		"myshows_check_episode", "myshows_uncheck_episode", "myshows_set_show_status",
 		"myshows_rate_show", "myshows_rate_episode",

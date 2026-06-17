@@ -145,6 +145,7 @@ func registerPublicTools(server *mcp.Server, api myshows.API) {
 func registerAuthTools(server *mcp.Server, api myshows.API) {
 	mcp.AddTool(server, tools.ProfileTool(), tools.NewProfileHandler(api))
 	mcp.AddTool(server, tools.MyShowsTool(), tools.NewMyShowsHandler(api))
+	mcp.AddTool(server, tools.ShowStatusTool(), tools.NewShowStatusHandler(api))
 	mcp.AddTool(server, tools.MyEpisodesTool(), tools.NewMyEpisodesHandler(api))
 	mcp.AddTool(server, tools.UnwatchedTool(), tools.NewUnwatchedHandler(api))
 	mcp.AddTool(server, tools.CountersTool(), tools.NewCountersHandler(api))

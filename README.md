@@ -15,7 +15,7 @@ MCP server for [MyShows.me](https://myshows.me). Search shows, inspect a show or
 
 ### Public (no credentials)
 
-- **myshows_search** — search shows by title or keywords.
+- **myshows_search** — search shows by title or keywords; pass `withStatus` to also include your watch status per result (requires sign-in).
 - **myshows_show** — full show details (title, year, status, ratings, network), optionally with the episode list.
 - **myshows_show_by_external** — look a show up by an external id from imdb, kinopoisk, or thetvdb.
 - **myshows_episode** — details of a single episode.
@@ -26,7 +26,8 @@ MCP server for [MyShows.me](https://myshows.me). Search shows, inspect a show or
 ### Personal tracker (requires sign-in)
 
 - **myshows_profile** — a user profile with watch-time statistics.
-- **myshows_my_shows** — tracked shows with watch status, rating, and progress.
+- **myshows_my_shows** — tracked shows with watch status, rating, and progress. The full list is large, so it takes optional `showId`, `query` (title substring), `status`, `limit`, and `offset` filters and reports `total` alongside the returned page.
+- **myshows_show_status** — the watch status (watching, later, cancelled, finished) for one or more shows by ID — a lightweight lookup that avoids pulling the whole tracked list.
 - **myshows_my_episodes** — your watched episodes for a show, with dates and ratings.
 - **myshows_unwatched** — episodes you have not watched yet (all pending, or the next one per show).
 - **myshows_counters** — pending-item counts (unwatched episodes, new comments, achievements).

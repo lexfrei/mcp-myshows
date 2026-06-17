@@ -36,6 +36,17 @@ func (c *Client) MyShows(ctx context.Context, login string) ([]ProfileShow, erro
 	return shows, err
 }
 
+// ShowStatuses returns the authenticated user's watch status for the given
+// shows -- a lightweight alternative to MyShows when only the status is needed.
+// Requires authentication.
+func (c *Client) ShowStatuses(ctx context.Context, showIDs []int) ([]ShowStatus, error) {
+	var statuses []ShowStatus
+
+	err := c.callAuthed(ctx, "profile.ShowStatuses", map[string]any{paramShowIDs: showIDs}, &statuses)
+
+	return statuses, err
+}
+
 // MyEpisodes returns the authenticated user's watched episodes for a show.
 // Requires authentication.
 func (c *Client) MyEpisodes(ctx context.Context, showID int) ([]WatchedEpisode, error) {

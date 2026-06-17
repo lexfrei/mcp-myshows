@@ -14,6 +14,13 @@ var errBoom = errors.New("boom")
 
 const testIdent = "test"
 
+const (
+	titleBreakingBad = "Breaking Bad"
+	statusWatching   = "watching"
+	statusFinished   = "finished"
+	statusLater      = "later"
+)
+
 func TestSearchHandler_Success(t *testing.T) {
 	t.Parallel()
 
@@ -66,7 +73,7 @@ func TestShowHandler_InvalidID(t *testing.T) {
 func TestShowHandler_Success(t *testing.T) {
 	t.Parallel()
 
-	api := &mockAPI{showResult: &myshows.ShowDetails{Show: myshows.Show{ID: 187, Title: "Breaking Bad"}}}
+	api := &mockAPI{showResult: &myshows.ShowDetails{Show: myshows.Show{ID: 187, Title: titleBreakingBad}}}
 	handler := tools.NewShowHandler(api)
 
 	_, result, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.ShowParams{ShowID: 187})
@@ -74,7 +81,7 @@ func TestShowHandler_Success(t *testing.T) {
 		t.Fatalf("handler error: %v", err)
 	}
 
-	if result.ID != 187 || result.Title != "Breaking Bad" {
+	if result.ID != 187 || result.Title != titleBreakingBad {
 		t.Errorf("unexpected show: %+v", result)
 	}
 }
@@ -232,12 +239,12 @@ func TestSetShowStatusHandler_Success(t *testing.T) {
 	handler := tools.NewSetShowStatusHandler(api)
 
 	_, result, err := handler(t.Context(), &mcp.CallToolRequest{},
-		tools.SetShowStatusParams{ShowID: 187, Status: "watching"})
+		tools.SetShowStatusParams{ShowID: 187, Status: statusWatching})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
 	}
 
-	if !result.Success || api.statusID != 187 || api.statusValue != "watching" {
+	if !result.Success || api.statusID != 187 || api.statusValue != statusWatching {
 		t.Errorf("unexpected: %+v / id=%d status=%q", result, api.statusID, api.statusValue)
 	}
 }
@@ -389,6 +396,211 @@ func TestTopHandler_PassesModeThrough(t *testing.T) {
 
 	if api.lastMode != "all" {
 		t.Errorf("lastMode = %q, want all", api.lastMode)
+	}
+}
+
+func sampleProfileShows() []myshows.ProfileShow {
+	return []myshows.ProfileShow{
+		{Show: myshows.Show{ID: 1, Title: titleBreakingBad}, WatchStatus: statusFinished},
+		{Show: myshows.Show{ID: 2, Title: "Better Call Saul"}, WatchStatus: statusWatching},
+		{Show: myshows.Show{ID: 3, Title: "The Wire"}, WatchStatus: statusFinished},
+	}
+}
+
+func TestMyShowsHandler_FilterByShowID(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewMyShowsHandler(&mockAPI{myShowsResult: sampleProfileShows()})
+
+	_, result, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{ShowID: 3})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if result.Count != 1 || result.Total != 1 || result.Shows[0].Show.ID != 3 {
+		t.Errorf("unexpected: count=%d total=%d shows=%+v", result.Count, result.Total, result.Shows)
+	}
+}
+
+func TestMyShowsHandler_FilterByStatusAndQuery(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewMyShowsHandler(&mockAPI{myShowsResult: sampleProfileShows()})
+
+	_, byStatus, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{Status: statusFinished})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if byStatus.Total != 2 {
+		t.Errorf("status filter total = %d, want 2", byStatus.Total)
+	}
+
+	_, byBoth, err := handler(t.Context(), &mcp.CallToolRequest{},
+		tools.MyShowsParams{Status: statusFinished, Query: "wire"})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if byBoth.Total != 1 || byBoth.Shows[0].Show.ID != 3 {
+		t.Errorf("status+query filter = %+v", byBoth.Shows)
+	}
+}
+
+func TestMyShowsHandler_Pagination(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewMyShowsHandler(&mockAPI{myShowsResult: sampleProfileShows()})
+
+	_, result, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{Offset: 1, Limit: 1})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if result.Total != 3 || result.Count != 1 || result.Shows[0].Show.ID != 2 {
+		t.Errorf("pagination = total %d count %d shows %+v", result.Total, result.Count, result.Shows)
+	}
+}
+
+func TestMyShowsHandler_PaginationEdges(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewMyShowsHandler(&mockAPI{myShowsResult: sampleProfileShows()})
+
+	_, beyond, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{Offset: 99})
+	if err != nil {
+		t.Fatalf("offset beyond: %v", err)
+	}
+
+	if beyond.Count != 0 || beyond.Total != 3 || len(beyond.Shows) != 0 {
+		t.Errorf("offset beyond list: count=%d total=%d shows=%d", beyond.Count, beyond.Total, len(beyond.Shows))
+	}
+
+	_, noCap, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{Limit: 0})
+	if err != nil {
+		t.Fatalf("limit 0: %v", err)
+	}
+
+	if noCap.Count != 3 {
+		t.Errorf("limit 0 (no cap) count = %d, want 3", noCap.Count)
+	}
+
+	_, negative, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.MyShowsParams{Offset: -5})
+	if err != nil {
+		t.Fatalf("negative offset: %v", err)
+	}
+
+	if negative.Count != 3 {
+		t.Errorf("negative offset count = %d, want 3 (should clamp to 0)", negative.Count)
+	}
+}
+
+func TestSearchHandler_WithStatusPartial(t *testing.T) {
+	t.Parallel()
+
+	api := &mockAPI{
+		searchResult:   []myshows.Show{{ID: 1, Title: "A"}, {ID: 2, Title: "B"}},
+		statusesResult: []myshows.ShowStatus{{ShowID: 1, WatchStatus: statusWatching}},
+	}
+	handler := tools.NewSearchHandler(api)
+
+	_, result, err := handler(t.Context(), &mcp.CallToolRequest{},
+		tools.SearchParams{Query: "x", WithStatus: true})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if result.Results[0].WatchStatus != statusWatching {
+		t.Errorf("matched hit status = %q, want %q", result.Results[0].WatchStatus, statusWatching)
+	}
+
+	if result.Results[1].WatchStatus != "" {
+		t.Errorf("unmatched hit status = %q, want empty", result.Results[1].WatchStatus)
+	}
+}
+
+func TestShowStatusHandler_EmptyIDs(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewShowStatusHandler(&mockAPI{})
+
+	_, _, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.ShowStatusParams{})
+	if !errors.Is(err, tools.ErrValidation) {
+		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestShowStatusHandler_InvalidID(t *testing.T) {
+	t.Parallel()
+
+	handler := tools.NewShowStatusHandler(&mockAPI{})
+
+	_, _, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.ShowStatusParams{ShowIDs: []int{1, -2}})
+	if !errors.Is(err, tools.ErrValidation) {
+		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestShowStatusHandler_Success(t *testing.T) {
+	t.Parallel()
+
+	api := &mockAPI{statusesResult: []myshows.ShowStatus{{ShowID: 45534, WatchStatus: statusLater}}}
+	handler := tools.NewShowStatusHandler(api)
+
+	_, result, err := handler(t.Context(), &mcp.CallToolRequest{}, tools.ShowStatusParams{ShowIDs: []int{45534}})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if result.Count != 1 || result.Statuses[0].WatchStatus != statusLater {
+		t.Errorf("unexpected statuses: %+v", result.Statuses)
+	}
+
+	if len(api.lastShowIDs) != 1 || api.lastShowIDs[0] != 45534 {
+		t.Errorf("lastShowIDs = %v, want [45534]", api.lastShowIDs)
+	}
+}
+
+func TestSearchHandler_WithStatusEnriches(t *testing.T) {
+	t.Parallel()
+
+	api := &mockAPI{
+		searchResult: []myshows.Show{{ID: 187, Title: titleBreakingBad}, {ID: 45534, Title: "Westworld"}},
+		statusesResult: []myshows.ShowStatus{
+			{ShowID: 187, WatchStatus: statusFinished},
+			{ShowID: 45534, WatchStatus: statusLater},
+		},
+	}
+	handler := tools.NewSearchHandler(api)
+
+	_, result, err := handler(t.Context(), &mcp.CallToolRequest{},
+		tools.SearchParams{Query: "x", WithStatus: true})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if result.Results[0].WatchStatus != statusFinished || result.Results[1].WatchStatus != statusLater {
+		t.Errorf("status not merged: %+v", result.Results)
+	}
+
+	if len(api.lastShowIDs) != 2 {
+		t.Errorf("lastShowIDs = %v, want 2 ids", api.lastShowIDs)
+	}
+}
+
+func TestSearchHandler_WithStatusNotAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	api := &mockAPI{
+		searchResult: []myshows.Show{{ID: 1, Title: "A"}},
+		statusesErr:  myshows.ErrNotAuthenticated,
+	}
+	handler := tools.NewSearchHandler(api)
+
+	_, _, err := handler(t.Context(), &mcp.CallToolRequest{},
+		tools.SearchParams{Query: "x", WithStatus: true})
+	if !errors.Is(err, tools.ErrStatusNeedsAuth) || !errors.Is(err, tools.ErrValidation) {
+		t.Fatalf("expected ErrStatusNeedsAuth/ErrValidation, got %v", err)
 	}
 }
 

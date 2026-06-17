@@ -30,6 +30,11 @@ var ErrInvalidRating = errors.New("rating must be between 0 and 5")
 // ErrInvalidList is returned when an unknown episode list is requested.
 var ErrInvalidList = errors.New("list must be one of: unwatched, next")
 
+// ErrStatusNeedsAuth is returned when search is asked to include watch status
+// but no credentials are configured.
+var ErrStatusNeedsAuth = errors.New(
+	"withStatus requires authentication (set MYSHOWS_USERNAME and MYSHOWS_PASSWORD)")
+
 // ErrEmptyResponse indicates the client returned neither data nor an error,
 // which a well-behaved client never does but the interface does not forbid.
 var ErrEmptyResponse = errors.New("myshows returned no data")

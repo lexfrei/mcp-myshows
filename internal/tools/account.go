@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -37,22 +38,33 @@ func NewProfileHandler(api myshows.API) mcp.ToolHandlerFor[ProfileParams, myshow
 	}
 }
 
-// MyShowsParams defines the parameters for the myshows_my_shows tool.
+// MyShowsParams defines the parameters for the myshows_my_shows tool. The whole
+// tracked list can be large, so the filters and pagination (applied
+// client-side; the API has no server-side paging) keep the result small.
 type MyShowsParams struct {
-	Login string `json:"login,omitempty" jsonschema:"Username to look up; empty returns your own tracked shows"`
+	Login  string `json:"login,omitempty"  jsonschema:"Username to look up; empty returns your own tracked shows"`
+	ShowID int    `json:"showId,omitempty" jsonschema:"Return only the tracked show with this ID"`
+	Query  string `json:"query,omitempty"  jsonschema:"Case-insensitive substring filter on the show title"`
+	Status string `json:"status,omitempty" jsonschema:"Filter by watch status: watching, later, cancelled, finished"`
+	Limit  int    `json:"limit,omitempty"  jsonschema:"Maximum number of shows to return (0 = all)"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Skip this many shows before returning, for pagination"`
 }
 
-// MyShowsResult is the output of the myshows_my_shows tool.
+// MyShowsResult is the output of the myshows_my_shows tool. Total is the number
+// of shows matching the filters before pagination; Count is the number actually
+// returned in this page.
 type MyShowsResult struct {
 	Count int                   `json:"count"`
+	Total int                   `json:"total"`
 	Shows []myshows.ProfileShow `json:"shows"`
 }
 
 // MyShowsTool returns the MCP tool definition for myshows_my_shows.
 func MyShowsTool() *mcp.Tool {
 	return &mcp.Tool{
-		Name:        "myshows_my_shows",
-		Description: "List a user's tracked shows with watch status, rating, and progress; defaults to the authenticated user",
+		Name: "myshows_my_shows",
+		Description: "List a user's tracked shows with watch status, rating, and progress; defaults to the " +
+			"authenticated user. The full list is large -- use showId, query, status, limit, and offset to narrow it.",
 		Annotations: readOnly("My Shows"),
 	}
 }
@@ -69,7 +81,10 @@ func NewMyShowsHandler(api myshows.API) mcp.ToolHandlerFor[MyShowsParams, MyShow
 			return nil, MyShowsResult{}, myshowsErr("my shows failed", err)
 		}
 
-		return nil, MyShowsResult{Count: len(shows), Shows: shows}, nil
+		filtered := filterProfileShows(shows, &params)
+		page := paginate(filtered, params.Offset, params.Limit)
+
+		return nil, MyShowsResult{Count: len(page), Total: len(filtered), Shows: page}, nil
 	}
 }
 
@@ -215,6 +230,59 @@ func NewRecommendationsHandler(api myshows.API) mcp.ToolHandlerFor[Recommendatio
 
 		return nil, RecommendationsResult{Count: len(recommendations), Recommendations: recommendations}, nil
 	}
+}
+
+// filterProfileShows applies the optional showId/query/status filters. With no
+// filter set it returns the input unchanged.
+func filterProfileShows(shows []myshows.ProfileShow, params *MyShowsParams) []myshows.ProfileShow {
+	if params.ShowID == 0 && params.Query == "" && params.Status == "" {
+		return shows
+	}
+
+	query := strings.ToLower(params.Query)
+	out := make([]myshows.ProfileShow, 0, len(shows))
+
+	for i := range shows {
+		entry := &shows[i]
+
+		switch {
+		case params.ShowID != 0 && entry.Show.ID != params.ShowID:
+			continue
+		case params.Status != "" && !strings.EqualFold(entry.WatchStatus, params.Status):
+			continue
+		case query != "" && !titleContains(&entry.Show, query):
+			continue
+		}
+
+		out = append(out, *entry)
+	}
+
+	return out
+}
+
+// titleContains reports whether either title holds the lower-cased query.
+func titleContains(show *myshows.Show, lowerQuery string) bool {
+	return strings.Contains(strings.ToLower(show.Title), lowerQuery) ||
+		strings.Contains(strings.ToLower(show.TitleOriginal), lowerQuery)
+}
+
+// paginate returns the offset/limit window of shows. A limit of 0 means no cap.
+func paginate(shows []myshows.ProfileShow, offset, limit int) []myshows.ProfileShow {
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset >= len(shows) {
+		return []myshows.ProfileShow{}
+	}
+
+	shows = shows[offset:]
+
+	if limit > 0 && limit < len(shows) {
+		shows = shows[:limit]
+	}
+
+	return shows
 }
 
 // resolveList validates the episode list name, defaulting to unwatched.

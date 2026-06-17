@@ -33,6 +33,7 @@ const (
 	paramList         = "list"
 	paramStatus       = "status"
 	paramRating       = "rating"
+	paramShowIDs      = "showIds"
 )
 
 // API is the behaviour the MCP tools depend on. It is satisfied by *Client and
@@ -51,6 +52,7 @@ type API interface {
 	// Account, read-only methods (require authentication).
 	Profile(ctx context.Context, login string) (*Profile, error)
 	MyShows(ctx context.Context, login string) ([]ProfileShow, error)
+	ShowStatuses(ctx context.Context, showIDs []int) ([]ShowStatus, error)
 	MyEpisodes(ctx context.Context, showID int) ([]WatchedEpisode, error)
 	NextEpisodes(ctx context.Context, list string) ([]NextEpisode, error)
 	Counters(ctx context.Context) (*Counters, error)

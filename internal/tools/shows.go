@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/lexfrei/mcp-myshows/internal/myshows"
@@ -10,20 +11,30 @@ import (
 
 // SearchParams defines the parameters for the myshows_search tool.
 type SearchParams struct {
-	Query string `json:"query" jsonschema:"Search query: a show title or keywords"`
+	Query      string `json:"query"                jsonschema:"Search query: a show title or keywords"`
+	WithStatus bool   `json:"withStatus,omitempty" jsonschema:"Also include your watch status for each result (requires authentication)"`
+}
+
+// SearchHit is one search result, optionally carrying the authenticated user's
+// watch status. It embeds Show, so without withStatus it is identical to a Show.
+type SearchHit struct {
+	myshows.Show
+
+	WatchStatus string `json:"watchStatus,omitempty"`
 }
 
 // SearchResult is the output of the myshows_search tool.
 type SearchResult struct {
-	Count   int            `json:"count"`
-	Results []myshows.Show `json:"results"`
+	Count   int         `json:"count"`
+	Results []SearchHit `json:"results"`
 }
 
 // SearchTool returns the MCP tool definition for myshows_search.
 func SearchTool() *mcp.Tool {
 	return &mcp.Tool{
-		Name:        "myshows_search",
-		Description: "Search MyShows for TV shows by title or keywords",
+		Name: "myshows_search",
+		Description: "Search MyShows for TV shows by title or keywords. Set withStatus to also include your " +
+			"watch status per result (requires authentication).",
 		Annotations: readOnly("Search Shows"),
 	}
 }
@@ -44,8 +55,49 @@ func NewSearchHandler(api myshows.API) mcp.ToolHandlerFor[SearchParams, SearchRe
 			return nil, SearchResult{}, myshowsErr("search failed", err)
 		}
 
-		return nil, SearchResult{Count: len(shows), Results: shows}, nil
+		hits := make([]SearchHit, len(shows))
+		for i := range shows {
+			hits[i] = SearchHit{Show: shows[i]}
+		}
+
+		if params.WithStatus && len(hits) > 0 {
+			statusErr := enrichWithStatus(ctx, api, hits)
+			if statusErr != nil {
+				return nil, SearchResult{}, statusErr
+			}
+		}
+
+		return nil, SearchResult{Count: len(hits), Results: hits}, nil
 	}
+}
+
+// enrichWithStatus fills each hit's WatchStatus from profile.ShowStatuses. When
+// no credentials are configured it returns a clear ErrStatusNeedsAuth.
+func enrichWithStatus(ctx context.Context, api myshows.API, hits []SearchHit) error {
+	ids := make([]int, len(hits))
+	for i := range hits {
+		ids[i] = hits[i].ID
+	}
+
+	statuses, err := api.ShowStatuses(ctx, ids)
+	if err != nil {
+		if errors.Is(err, myshows.ErrNotAuthenticated) || errors.Is(err, myshows.ErrNoCredentials) {
+			return validationErr(ErrStatusNeedsAuth)
+		}
+
+		return myshowsErr("search status enrichment failed", err)
+	}
+
+	byID := make(map[int]string, len(statuses))
+	for i := range statuses {
+		byID[statuses[i].ShowID] = statuses[i].WatchStatus
+	}
+
+	for i := range hits {
+		hits[i].WatchStatus = byID[hits[i].ID]
+	}
+
+	return nil
 }
 
 // ShowParams defines the parameters for the myshows_show tool.

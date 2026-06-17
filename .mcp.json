@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mcp-myshows": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "MYSHOWS_USERNAME",
+        "-e", "MYSHOWS_PASSWORD",
+        "-e", "MYSHOWS_TOKEN",
+        "-v", "mcp-myshows-session:/home/nobody/.mcp-myshows",
+        "ghcr.io/lexfrei/mcp-myshows:latest"
+      ],
+      "env": {
+        "MYSHOWS_USERNAME": "",
+        "MYSHOWS_PASSWORD": ""
+      }
+    }
+  }
+}
